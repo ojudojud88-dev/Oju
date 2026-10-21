@@ -1,0 +1,39 @@
+TURBO DRIFT - game balap 3D realistis, Godot 4.3+ (renderer Mobile)
+Mobil: Lamborghini Aventador LP 700-4 (V12 6.5L, 740 hp, 7 percepatan, AWD)
+
+CARA JALANKAN
+1. Buka Godot 4.3 atau lebih baru -> Import -> pilih project.godot -> Import & Edit.
+2. Tekan F5.
+
+KONTROL
+- Sentuh: tombol < > (setir), GAS, REM, NITRO, ULANG (tegakkan mobil).
+- Keyboard: A/D atau panah = setir, W = gas, S = rem/mundur, Spasi = rem tangan,
+  Shift = nitro, R = ulang.
+- DRIFT: tahan REM sambil belok saat kecepatan tinggi.
+
+KUALITAS GRAFIS
+- main.gd: RENDER_SCALE (1.7 = sangat tajam; turunkan ke 1.0 atau 0.8 kalau HP berat).
+- project.godot: directional_shadow/size (4096 -> 2048), reflection_size (512 -> 256).
+
+MODEL MOBIL ASLI
+Untuk tampilan yang persis sama dengan mobil nyata, taruh file models/mobil.glb
+(lihat models/LETAKKAN_MODEL_DI_SINI.txt). Tanpa file itu, game memakai bodi buatan kode.
+
+EXPORT KE ANDROID
+Editor -> Manage Export Templates (unduh), lalu Project -> Export -> Add -> Android.
+
+=== BALAPAN, ONLINE, TOKO, MOBIL TERBANG ===
+- Lobi: pilih/beli mobil di TOKO & GARASI (koin tersimpan otomatis). Menang balapan = koin.
+- BALAPAN: 3 putaran lawan AI (atur jumlah lawan di tombol LAWAN AI).
+- ONLINE: server khusus -> godot --headless --path . -- --server [--port=7777]
+  (buka UDP 7777). Atau tekan BUAT RUANG di satu HP; teman GABUNG lewat IP.
+  Fisika dihitung di tiap HP; tidak ada akun/anti-curang.
+- Tesla Roadster Terbang (12.000 koin): tombol TERBANG (keyboard F), NAIK/TURUN (E/Q).
+- Android: aktifkan izin INTERNET saat export. Turunkan RENDER_SCALE di car.gd bila HP lambat.
+- Model asli: taruh models/mobil.glb (otomatis dipakai).
+
+=== PERBAIKAN (21 Okt) ===
+- Lag: RENDER_SCALE 1.7->1.0, MSAA 4x->2x, bayangan 4096/4 split -> 2048/2 split, filter bayangan lebih ringan.
+  Bila masih berat di HP lemah: RENDER_SCALE=0.85 di main.gd.
+- Suara mesin: tabel gelombang + filter rpm, desis intake, limiter, letupan knalpot, siulan nitro.
+- Jaringan: klien yang belum tersambung tidak lagi memanggil RPC (error berulang).

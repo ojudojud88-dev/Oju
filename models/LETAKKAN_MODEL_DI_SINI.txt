@@ -1,0 +1,6 @@
+Taruh model 3D mobil di folder ini dengan nama persis: mobil.glb
+(format glTF/GLB, misalnya Lamborghini Huracan Performante dari Sketchfab - cek lisensinya).
+
+Setelah itu buka proyek di Godot (biar file diimpor) lalu F5.
+Game otomatis memakai model itu: diskalakan ke panjang 4,5 m, dipusatkan, dan ditaruh di tanah.
+Kalau mobil jalan mundur, ubah MODEL_YAW di car.gd menjadi 180.
