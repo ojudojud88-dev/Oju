@@ -21,6 +21,23 @@ var _lbl_pesan: Label
 var _daftar_btn := {}
 var _btn_lawan: Button
 
+# tema warna & efek
+const TEMA := {
+	"giallo": Color(1.0, 0.72, 0.10),
+	"rosso": Color(1.0, 0.15, 0.22),
+	"nero": Color(0.62, 0.32, 1.0),
+	"volt": Color(0.20, 0.78, 1.0),
+}
+var _tema := Color(1.0, 0.72, 0.10)
+var _tema_t := Color(1.0, 0.72, 0.10)
+var _mat_dinding: ShaderMaterial
+var _mat_cincin: StandardMaterial3D
+var _mat_strip: Array = []
+var _mat_pilar: Array = []
+var _mat_partikel: StandardMaterial3D
+var _spot: SpotLight3D
+var _rim_l: DirectionalLight3D
+
 # online
 var _panel_online: PanelContainer
 var _in_nama: LineEdit
@@ -99,6 +116,7 @@ func _buat_panggung() -> void:
 	rim.light_energy = 0.9
 	rim.light_color = Color(0.6, 0.75, 1.0)
 	_vp.add_child(rim)
+	_rim_l = rim
 
 	# lantai panggung bundar
 	var lantai := MeshInstance3D.new()
@@ -128,6 +146,7 @@ func _buat_panggung() -> void:
 	cmat.emission = Color(1.0, 0.7, 0.2)
 	cmat.emission_energy_multiplier = 1.6
 	cincin.material_override = cmat
+	_mat_cincin = cmat
 	cincin.scale = Vector3(1, 0.3, 1)
 	_vp.add_child(cincin)
 	# dinding studio melengkung (sisi dalam silinder)
@@ -140,10 +159,29 @@ func _buat_panggung() -> void:
 	wm.cap_top = false
 	wm.cap_bottom = false
 	dinding.mesh = wm
-	var dmat := StandardMaterial3D.new()
-	dmat.albedo_color = Color(0.07, 0.08, 0.12)
-	dmat.roughness = 0.9
-	dmat.cull_mode = BaseMaterial3D.CULL_FRONT
+	var dmat := ShaderMaterial.new()
+	var dsh := Shader.new()
+	dsh.code = """shader_type spatial;
+render_mode unshaded, cull_front;
+uniform vec3 tema = vec3(1.0, 0.7, 0.1);
+varying vec3 wp;
+void vertex() { wp = VERTEX; }
+void fragment() {
+	float g = clamp((wp.y + 6.0) / 12.0, 0.0, 1.0);
+	float sudut = atan(wp.x, wp.z);
+	float pita = 0.5 + 0.5 * sin(sudut * 3.0 + TIME * 0.35);
+	float pita2 = 0.5 + 0.5 * sin(sudut * 5.0 - TIME * 0.22 + 1.7);
+	vec3 gelap = vec3(0.012, 0.015, 0.03);
+	vec3 bawah = tema * (0.55 + 0.25 * pita);
+	vec3 tengah = mix(tema, vec3(0.35, 0.2, 0.7), 0.5) * (0.18 + 0.12 * pita2);
+	vec3 c = mix(bawah, tengah, smoothstep(0.38, 0.62, g));
+	c = mix(c, gelap, smoothstep(0.55, 1.0, g));
+	c = mix(gelap, c, smoothstep(0.30, 0.45, g));
+	ALBEDO = c;
+}
+""";
+	dmat.shader = dsh
+	_mat_dinding = dmat
 	dinding.material_override = dmat
 	dinding.position = Vector3(0, 5.5, 0)
 	_vp.add_child(dinding)
@@ -177,6 +215,7 @@ func _buat_panggung() -> void:
 		rm.emission = Color(0.55, 0.75, 1.0)
 		rm.emission_energy_multiplier = 0.7
 		rg.material_override = rm
+		_mat_strip.append(rm)
 		rg.position = Vector3(0, 1.2 + k * 2.6, 0)
 		_vp.add_child(rg)
 	# lampu sorot ke mobil
@@ -188,6 +227,72 @@ func _buat_panggung() -> void:
 	sp.light_energy = 2.2
 	sp.light_color = Color(1.0, 0.95, 0.88)
 	_vp.add_child(sp)
+	_spot = sp
+
+	# tiang cahaya melingkar
+	var psh := Shader.new()
+	psh.code = """shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
+uniform vec3 tema = vec3(1.0, 0.7, 0.1);
+uniform float fase = 0.0;
+void fragment() {
+	float x = abs(UV.x - 0.5) * 2.0;
+	float sisi = pow(1.0 - x, 2.0);
+	float naik = pow(1.0 - UV.y, 1.5);
+	float kedip = 0.65 + 0.35 * sin(TIME * 1.3 + fase);
+	ALBEDO = tema * 1.4;
+	ALPHA = sisi * naik * 0.55 * kedip;
+}
+""";
+	for k in 12:
+		var ang := float(k) / 12.0 * TAU
+		var pl := MeshInstance3D.new()
+		var pq := QuadMesh.new()
+		pq.size = Vector2(0.9, 9.0)
+		pl.mesh = pq
+		var pmt := ShaderMaterial.new()
+		pmt.shader = psh
+		pmt.set_shader_parameter("fase", float(k) * 1.7)
+		pl.material_override = pmt
+		pl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pl.position = Vector3(sin(ang) * 7.5, 4.5, cos(ang) * 7.5)
+		pl.rotation.y = ang + PI
+		_vp.add_child(pl)
+		_mat_pilar.append(pmt)
+	# percikan cahaya melayang naik
+	var pt := CPUParticles3D.new()
+	pt.amount = 90
+	pt.lifetime = 6.0
+	pt.preprocess = 6.0
+	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	pt.emission_ring_axis = Vector3.UP
+	pt.emission_ring_radius = 5.5
+	pt.emission_ring_inner_radius = 1.5
+	pt.emission_ring_height = 0.2
+	pt.direction = Vector3.UP
+	pt.spread = 12.0
+	pt.gravity = Vector3(0, 0.05, 0)
+	pt.initial_velocity_min = 0.35
+	pt.initial_velocity_max = 0.9
+	pt.scale_amount_min = 0.5
+	pt.scale_amount_max = 1.6
+	pt.position = Vector3(0, 0.1, 0)
+	var sm := SphereMesh.new()
+	sm.radius = 0.03
+	sm.height = 0.06
+	sm.radial_segments = 6
+	sm.rings = 3
+	_mat_partikel = StandardMaterial3D.new()
+	_mat_partikel.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mat_partikel.albedo_color = Color(1.0, 0.8, 0.3)
+	sm.material = _mat_partikel
+	pt.mesh = sm
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0))
+	ramp.add_point(0.2, Color(1, 1, 1, 1))
+	ramp.set_color(1, Color(1, 1, 1, 0))
+	pt.color_ramp = ramp
+	_vp.add_child(pt)
 
 	_putar = Node3D.new()
 	_vp.add_child(_putar)
@@ -203,6 +308,7 @@ func _pajang(id: String) -> void:
 	if _mobil_pajang != null:
 		_mobil_pajang.queue_free()
 	_id_pajang = id
+	_tema_t = TEMA.get(id, Color(1.0, 0.72, 0.1))
 	var c = CarScript.new()
 	c.profil = Gm.profil(id).duplicate()
 	c.hantu = true
@@ -297,6 +403,7 @@ func _buat_ui() -> void:
 		b.pressed.connect(_pilih_pajang.bind(id))
 		vk.add_child(b)
 		_daftar_btn[id] = b
+		_pasang_ikon(b, id)
 
 	# detail (kanan)
 	var kanan := _panel(Color(1.0, 0.75, 0.3))
@@ -388,6 +495,51 @@ func _rp(n: int) -> String:
 # =====================================================================
 #  TOKO / GARASI
 # =====================================================================
+func _pasang_ikon(b: Button, id: String) -> void:
+	var ic := Control.new()
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ic.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	ic.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ic.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	ic.offset_left = -112
+	ic.offset_right = -8
+	ic.offset_top = -40
+	ic.offset_bottom = -4
+	b.add_child(ic)
+	ic.draw.connect(func(): _gambar_ikon(ic, id))
+
+
+func _gambar_ikon(ic: Control, id: String) -> void:
+	var p: Dictionary = Gm.profil(id)
+	var w := ic.size.x
+	var h := ic.size.y
+	var warna: Color = p["body"]
+	var tema: Color = TEMA.get(id, Color(1, 1, 1))
+	var terbang: bool = p["terbang"]
+	var dy := -4.0 if terbang else 0.0
+	var pts := PackedVector2Array()
+	var rd: Array = [Vector2(0.02, 0.78), Vector2(0.04, 0.58), Vector2(0.22, 0.50), Vector2(0.38, 0.20), Vector2(0.62, 0.14), Vector2(0.80, 0.45), Vector2(0.97, 0.56), Vector2(0.98, 0.78)]
+	if p["bodi"] == "roadster":
+		rd = [Vector2(0.02, 0.76), Vector2(0.05, 0.56), Vector2(0.30, 0.44), Vector2(0.48, 0.20), Vector2(0.68, 0.18), Vector2(0.84, 0.44), Vector2(0.98, 0.54), Vector2(0.98, 0.76)]
+	for v in rd:
+		pts.append(Vector2(v.x * w, v.y * h * 0.9 + dy))
+	if terbang:
+		for k in 3:
+			ic.draw_line(Vector2(w * (0.25 + k * 0.25), h * 0.95), Vector2(w * (0.25 + k * 0.25), h * 1.0), Color(tema.r, tema.g, tema.b, 0.9), 2.0)
+	ic.draw_colored_polygon(pts, warna)
+	var kaca := PackedVector2Array([Vector2(0.40 * w, 0.30 * h + dy), Vector2(0.50 * w, 0.20 * h + dy), Vector2(0.62 * w, 0.20 * h + dy), Vector2(0.74 * w, 0.44 * h + dy)])
+	ic.draw_colored_polygon(kaca, Color(0.1, 0.14, 0.2, 0.9))
+	var tepi := pts.duplicate()
+	tepi.append(pts[0])
+	ic.draw_polyline(tepi, Color(1, 1, 1, 0.55), 1.2, true)
+	if p["stripe"] != warna:
+		ic.draw_line(Vector2(0.30 * w, 0.52 * h + dy), Vector2(0.92 * w, 0.60 * h + dy), p["stripe"], 2.0)
+	for wx in [0.24, 0.78]:
+		var c := Vector2(wx * w, 0.80 * h + dy * 0.3)
+		ic.draw_circle(c, h * 0.17, Color(0.05, 0.05, 0.06))
+		ic.draw_circle(c, h * 0.09, Color(0.85, 0.88, 0.95) if not terbang else tema)
+
+
 func _segarkan() -> void:
 	_lbl_koin.text = "KOIN  %s" % _rp(Gm.koin)
 	for id in Gm.URUTAN:
@@ -612,8 +764,31 @@ func _toggle_siap() -> void:
 	Net.atur_siap(not Net.pemain[saya]["siap"])
 
 
+func _terapkan_tema(delta: float) -> void:
+	_tema = _tema.lerp(_tema_t, 1.0 - exp(-4.0 * delta))
+	if _mat_dinding:
+		_mat_dinding.set_shader_parameter("tema", Vector3(_tema.r, _tema.g, _tema.b))
+	for pm in _mat_pilar:
+		pm.set_shader_parameter("tema", Vector3(_tema.r, _tema.g, _tema.b))
+	var denyut := 1.3 + 0.7 * sin(_t * 2.2)
+	if _mat_cincin:
+		_mat_cincin.albedo_color = _tema
+		_mat_cincin.emission = _tema
+		_mat_cincin.emission_energy_multiplier = denyut
+	for rm in _mat_strip:
+		rm.emission = _tema.lerp(Color(1, 1, 1), 0.35)
+		rm.albedo_color = _tema
+	if _mat_partikel:
+		_mat_partikel.albedo_color = _tema.lerp(Color(1, 1, 1), 0.4)
+	if _spot:
+		_spot.light_color = Color(1, 1, 1).lerp(_tema, 0.25)
+	if _rim_l:
+		_rim_l.light_color = _tema.lerp(Color(1, 1, 1), 0.3)
+
+
 func _process(delta: float) -> void:
 	_t += delta
+	_terapkan_tema(delta)
 	if _putar:
 		_putar.rotation.y += delta * 0.45
 	if _mobil_pajang != null and is_instance_valid(_mobil_pajang):
