@@ -13,7 +13,9 @@ const PENGALI_NITRO := 1.5
 const KECEPATAN_MAKS := 83.0      # m/s (sekitar 300 km/j)
 const GAYA_REM := 15.0
 const STIR_MAKS := 0.55
-const STIR_MIN := 0.07
+const STIR_MIN := 0.045
+const GRAVITASI := 1.6             # gravitasi lebih berat agar mobil tidak terasa melayang
+const LAT_MAKS := 18.0             # m/s^2 percepatan samping yang boleh dicapai setir
 const GRIP_DEPAN := 4.0
 const GRIP_BELAKANG := 3.4
 const GRIP_DRIFT := 1.3
@@ -323,7 +325,8 @@ func _ready() -> void:
 	_terapkan_profil()
 	mass = MASSA
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0, 0.3, 0)
+	center_of_mass = Vector3(0, 0.12, 0)
+	gravity_scale = GRAVITASI
 	linear_damp = 0.05
 	angular_damp = 0.6
 	can_sleep = false
@@ -1195,7 +1198,8 @@ func _physics_process(delta: float) -> void:
 			di_tanah = true
 
 	# --- setir (makin kecil saat ngebut) ---
-	var maks := lerpf(STIR_MAKS, STIR_MIN, clampf(speed / 70.0, 0.0, 1.0))
+	# batas sudut setir mengikuti percepatan samping maksimum (~2 g) agar roda dalam tidak terangkat
+	var maks := clampf(LAT_MAKS * 2.7 / maxf(speed * speed, 1.0), STIR_MIN, STIR_MAKS)
 	var laju := 3.2 if absf(stir_in) > 0.01 else 6.0
 	steering = move_toward(steering, stir_in * maks, delta * laju)
 
@@ -1260,15 +1264,18 @@ func _physics_process(delta: float) -> void:
 		w.wheel_friction_slip = _grip if (w.position.z * fz < 0.0) else GRIP_DEPAN
 
 	if not terbang_on:
-		apply_central_force(-global_transform.basis.y * speed * speed * 0.45)
+		var sumbu_maju := global_transform.basis.z
+		var laju_roll := angular_velocity.dot(sumbu_maju)
+		apply_torque(-sumbu_maju * laju_roll * mass * 4.0)
+		apply_central_force(-global_transform.basis.y * speed * speed * 0.6)
 
 	# --- animasi bodi: roll saat menikung, pitch saat gas/rem, squat saat nitro ---
 	var acc := (fwd - _fwd_prev) / maxf(delta, 0.0001)
 	_fwd_prev = fwd
 	_acc_s = lerpf(_acc_s, acc, 1.0 - exp(-6.0 * delta))
 	var lat_acc := angular_velocity.y * fwd
-	var roll_t := clampf(-lat_acc * 0.012, -0.13, 0.13)
-	var pitch_t := clampf(_acc_s * 0.006, -0.07, 0.07) + _nos_p * 0.025
+	var roll_t := clampf(-lat_acc * 0.006, -0.06, 0.06)
+	var pitch_t := clampf(_acc_s * 0.004, -0.04, 0.04) + _nos_p * 0.015
 	if terbang_on:
 		roll_t = clampf(-stir_in * 0.32, -0.35, 0.35)
 		pitch_t = clampf(-linear_velocity.y * 0.012, -0.3, 0.3) - gas * 0.05
@@ -1443,7 +1450,7 @@ func _lepas_landas() -> void:
 
 func _mendarat() -> void:
 	terbang_on = false
-	gravity_scale = 1.0
+	gravity_scale = GRAVITASI
 	axis_lock_angular_x = false
 	axis_lock_angular_z = false
 	naik_in = 0.0

@@ -967,10 +967,10 @@ func _lompatan(sudut_deg: float, mat: Material) -> void:
 	# Profil (z, y): tanjakan melengkung halus -> meja datar -> turunan landai.
 	var lebar := 10.0
 	var hw := lebar * 0.5
-	var l_naik := 12.0
+	var l_naik := 16.0
 	var l_meja := 6.0
-	var l_turun := 14.0
-	var tinggi := 1.9
+	var l_turun := 16.0
+	var tinggi := 0.6
 	var total := l_naik + l_meja + l_turun
 	var prof: Array = []
 	var nn := 16

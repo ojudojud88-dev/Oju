@@ -41,3 +41,7 @@ Editor -> Manage Export Templates (unduh), lalu Project -> Export -> Add -> Andr
 === LOBI BARU & MOBIL BARU (22 Okt) ===
 - Lobi kota malam neon; tombol MOBIL membuka garasi (grafik statistik, panah ganti mobil, beli/pakai).
 - Mobil baru: Hyper Viola GT (9.000 koin, sayap GT, velg menyala) dan Aero Verde Chrome (15.000 koin, cat krom kameleon).
+
+=== FISIKA: TIDAK MELAYANG (22 Okt) ===
+- Sudut setir dibatasi percepatan samping (LAT_MAKS di car.gd), pusat massa diturunkan, anti-guling, gravitasi 1.6x (GRAVITASI).
+- Lompatan di sirkuit diperkecil (tinggi 1.9 m -> 0.6 m). Bila mau lebih seru, naikkan `tinggi` di main.gd (_lompatan).
