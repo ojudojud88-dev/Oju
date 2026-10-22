@@ -37,3 +37,7 @@ Editor -> Manage Export Templates (unduh), lalu Project -> Export -> Add -> Andr
   Bila masih berat di HP lemah: RENDER_SCALE=0.85 di main.gd.
 - Suara mesin: tabel gelombang + filter rpm, desis intake, limiter, letupan knalpot, siulan nitro.
 - Jaringan: klien yang belum tersambung tidak lagi memanggil RPC (error berulang).
+
+=== LOBI BARU & MOBIL BARU (22 Okt) ===
+- Lobi kota malam neon; tombol MOBIL membuka garasi (grafik statistik, panah ganti mobil, beli/pakai).
+- Mobil baru: Hyper Viola GT (9.000 koin, sayap GT, velg menyala) dan Aero Verde Chrome (15.000 koin, cat krom kameleon).

@@ -81,6 +81,8 @@ uniform vec4 paint : source_color = vec4(0.98, 0.72, 0.0, 1.0);
 uniform vec4 stripe : source_color = vec4(0.02, 0.02, 0.025, 1.0);
 uniform float rem_glow = 1.6;
 uniform float ev = 0.0;
+uniform vec4 paint2 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform float iri = 0.0;
 varying vec3 lp;
 varying vec3 ln;
 void vertex() {
@@ -188,6 +190,9 @@ void fragment() {
 	col *= 1.0 + (fl - 0.5) * 0.10 * (1.0 - dark) * (1.0 - glass);
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	col = mix(col, col * vec3(1.12, 1.0, 0.78) + vec3(0.04, 0.02, 0.0), fres * 0.5 * (1.0 - dark) * (1.0 - glass));
+	// cat kameleon: warna bergeser ke paint2 mengikuti sudut pandang & lengkung bodi
+	float sudut_k = clamp(fres * 1.6 + 0.35 * (0.5 + 0.5 * sin(lp.z * 1.6 + lp.y * 2.0)), 0.0, 1.0);
+	col = mix(col, paint2.rgb * (0.75 + 0.5 * smoothstep(-0.3, 0.95, ln.y)), sudut_k * iri * (1.0 - dark) * (1.0 - glass));
 	ALBEDO = col;
 	METALLIC = mix(0.25, 0.85, glass);
 	ROUGHNESS = mix(mix(0.3, 0.05, glass), 0.55, dark);
@@ -398,6 +403,8 @@ func _siapkan_material() -> void:
 	_mat_velg.albedo_color = Color(0.92, 0.93, 0.97)
 	_mat_velg.metallic = 0.6
 	_mat_velg.roughness = 0.3
+	if profil.has("velg_warna"):
+		_mat_velg.albedo_color = profil["velg_warna"]
 	_mat_kaliper = StandardMaterial3D.new()
 	_mat_kaliper.albedo_color = Color(0.85, 0.02, 0.02)
 	_mat_kaliper.roughness = 0.4
@@ -468,7 +475,7 @@ func _rata2(row: Array) -> Vector3:
 func _bangun_bodi() -> ArrayMesh:
 	var n := _st.size()
 	var cincin := 200
-	var p_exp := 2.0 / 2.6
+	var p_exp := 2.0 / float(profil.get("sudut", 2.6))
 	var grid: Array = []
 	for r in cincin:
 		var t := float(r) / float(cincin - 1) * float(n - 1)
@@ -607,7 +614,23 @@ func _buat_body() -> void:
 	_sayap = Node3D.new()
 	_sayap.position = Vector3(0, 1.0, 2.12)
 	v.add_child(_sayap)
-	_box(_sayap, Vector3(1.55, 0.03, 0.42), Vector3.ZERO, _mat_karbon)
+	if profil.get("sayap_gt", false):
+		# sayap GT besar: bidang utama + sirip samping + dua tiang
+		_box(_sayap, Vector3(2.0, 0.045, 0.62), Vector3(0, 0.34, 0.1), _mat_karbon)
+		_box(_sayap, Vector3(1.9, 0.03, 0.26), Vector3(0, 0.40, 0.42), _mat_karbon, Vector3(-14, 0, 0))
+		for sx in [-1.0, 1.0]:
+			_box(_sayap, Vector3(0.035, 0.30, 0.78), Vector3(sx * 1.0, 0.34, 0.14), _mat_karbon)
+			_box(_sayap, Vector3(0.06, 0.40, 0.12), Vector3(sx * 0.42, 0.14, 0.05), _mat_karbon)
+	else:
+		_box(_sayap, Vector3(1.55, 0.03, 0.42), Vector3.ZERO, _mat_karbon)
+	if profil.has("underglow"):
+		var ug := OmniLight3D.new()
+		ug.light_color = profil["underglow"]
+		ug.light_energy = 2.2
+		ug.omni_range = 4.2
+		ug.position = Vector3(0, 0.12, 0)
+		ug.shadow_enabled = false
+		_visual.add_child(ug)
 
 	for sx in [-1.0, 1.0]:
 		# spion
@@ -702,6 +725,25 @@ func _buat_satu_roda(pos: Vector3) -> void:
 		ring.position = Vector3(0, sy, 0)
 		hub.add_child(ring)
 	_silinder(hub, 0.055, 0.3, Vector3.ZERO, Vector3.ZERO, _mat_tutup, 12)       # tutup tengah emas
+	if profil.has("velg_glow"):
+		var gc: Color = profil["velg_glow"]
+		var gm := StandardMaterial3D.new()
+		gm.albedo_color = gc
+		gm.emission_enabled = true
+		gm.emission = gc
+		gm.emission_energy_multiplier = 1.5
+		for sy in [-(hw + 0.006), hw + 0.006]:
+			var gt := TorusMesh.new()
+			gt.inner_radius = 0.37
+			gt.outer_radius = 0.40
+			gt.rings = 48
+			gt.ring_segments = 6
+			var gr := MeshInstance3D.new()
+			gr.mesh = gt
+			gr.material_override = gm
+			gr.position = Vector3(0, sy, 0)
+			gr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			hub.add_child(gr)
 	_box(hub, Vector3(0.14, 0.012, 0.2), Vector3(0.17, signf(pos.x) * (hw - 0.002), 0.0), _mat_kaliper)
 	_wheels.append(w)
 
@@ -948,6 +990,8 @@ func _set_palet(i: int) -> void:
 	_mat_bodi.set_shader_parameter("paint", cb)
 	_mat_bodi.set_shader_parameter("stripe", cs)
 	_mat_bodi.set_shader_parameter("ev", 1.0 if ev else 0.0)
+	_mat_bodi.set_shader_parameter("paint2", profil.get("paint2", cb))
+	_mat_bodi.set_shader_parameter("iri", float(profil.get("iri", 0.0)))
 	_mat_body.albedo_color = cb
 
 

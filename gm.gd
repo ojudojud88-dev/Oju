@@ -34,6 +34,30 @@ const MOBIL := {
 		"bodi": "lambo", "ev": false, "terbang": false,
 		"info": "Tenaga +30% • kecepatan maks +8%",
 	},
+	"viola": {
+		"nama": "Hyper Viola GT",
+		"warna": "Ungu kameleon",
+		"harga": 9000,
+		"daya": 1.35, "vmaks": 1.09,
+		"body": Color(0.42, 0.08, 0.78), "stripe": Color(0.03, 0.03, 0.04),
+		"paint2": Color(0.95, 0.35, 0.80), "iri": 0.5, "sudut": 3.2,
+		"velg_glow": Color(0.75, 0.35, 1.0), "velg_warna": Color(0.06, 0.06, 0.07),
+		"sayap_gt": true, "underglow": Color(0.65, 0.3, 1.0),
+		"bodi": "lambo", "ev": false, "terbang": false,
+		"info": "Hypercar sayap GT • tenaga +35% • velg menyala",
+	},
+	"verde": {
+		"nama": "Aero Verde Chrome",
+		"warna": "Hijau krom kameleon",
+		"harga": 15000,
+		"daya": 1.4, "vmaks": 1.1,
+		"body": Color(0.06, 0.58, 0.36), "stripe": Color(0.02, 0.02, 0.03),
+		"paint2": Color(0.55, 0.22, 0.95), "iri": 0.55, "sudut": 3.0,
+		"velg_glow": Color(0.45, 0.25, 1.0), "velg_warna": Color(0.05, 0.05, 0.06),
+		"sayap_gt": false, "underglow": Color(0.35, 0.2, 0.95),
+		"bodi": "lambo", "ev": false, "terbang": false,
+		"info": "Cat krom berubah warna • tenaga +40% • velg neon ungu",
+	},
 	"volt": {
 		"nama": "Tesla Roadster Terbang",
 		"warna": "Putih mutiara",
@@ -44,7 +68,7 @@ const MOBIL := {
 		"info": "Listrik • thruster roket • BISA TERBANG (tombol TERBANG)",
 	},
 }
-const URUTAN := ["giallo", "rosso", "nero", "volt"]
+const URUTAN := ["giallo", "rosso", "nero", "viola", "verde", "volt"]
 
 var koin := KOIN_AWAL
 var dimiliki: Array = ["giallo"]

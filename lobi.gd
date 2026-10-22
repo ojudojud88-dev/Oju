@@ -26,9 +26,31 @@ const TEMA := {
 	"giallo": Color(1.0, 0.72, 0.10),
 	"rosso": Color(1.0, 0.15, 0.22),
 	"nero": Color(0.62, 0.32, 1.0),
+	"viola": Color(0.70, 0.30, 1.0),
+	"verde": Color(0.30, 0.95, 0.60),
 	"volt": Color(0.20, 0.78, 1.0),
 }
 var _tema := Color(1.0, 0.72, 0.10)
+var _env: Environment
+var _kota: Node3D
+var _latar_garasi: MeshInstance3D
+var _mat_latar: ShaderMaterial
+var _cam: Camera3D
+var _cam_pos := Vector3.ZERO
+var _cam_lihat := Vector3.ZERO
+var _cam_tpos := Vector3.ZERO
+var _cam_tlihat := Vector3.ZERO
+var _lbl_pemain: Label
+var _lbl_pakai: Label
+var _lbl_skor: Label
+var _radar: Control
+var _lbl_axis: Array = []
+var _ui_lobi: Control
+var _ui_garasi: Control
+var _mode_garasi := false
+var _kartu_pemain: Control
+const CAM_LOBI := [Vector3(6.6, 1.5, 10.4), Vector3(-2.0, 0.8, 0.0)]
+const CAM_GARASI := [Vector3(5.2, 1.3, 8.6), Vector3(-1.9, 0.7, 0.0)]
 var _tema_t := Color(1.0, 0.72, 0.10)
 var _mat_dinding: ShaderMaterial
 var _mat_cincin: StandardMaterial3D
@@ -70,6 +92,53 @@ func _ready() -> void:
 # =====================================================================
 #  PANGGUNG 3D (showroom)
 # =====================================================================
+const SHADER_GEDUNG := """
+shader_type spatial;
+uniform vec3 tint = vec3(0.6, 0.3, 1.0);
+varying vec3 wp;
+varying vec3 wn;
+void vertex() { wp = VERTEX; wn = NORMAL; }
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void fragment() {
+	float u = abs(wn.x) > 0.5 ? wp.z : wp.x;
+	vec2 g = vec2(u * 0.9, wp.y * 0.55);
+	vec2 cell = floor(g);
+	vec2 f = fract(g);
+	float on = step(0.62, h(cell));
+	float win = step(0.18, f.x) * step(f.x, 0.82) * step(0.22, f.y) * step(f.y, 0.78);
+	vec3 hangat = vec3(1.0, 0.82, 0.5);
+	vec3 dingin = mix(vec3(0.3, 0.85, 1.0), vec3(1.0, 0.3, 0.8), h(cell + 7.0));
+	vec3 wc = mix(hangat, dingin, step(0.55, h(cell + 3.0)));
+	float sisi = 1.0 - step(0.5, abs(wn.y));
+	ALBEDO = vec3(0.02, 0.018, 0.04) + tint * 0.02;
+	ROUGHNESS = 0.6;
+	EMISSION = wc * on * win * sisi * 0.95;
+}
+"""
+
+const SHADER_LATAR_GARASI := """
+shader_type spatial;
+render_mode unshaded;
+uniform vec3 tema = vec3(1.0, 0.5, 0.05);
+void fragment() {
+	float x = (UV.x - 0.5) * 200.0;
+	float y = 18.0 + (0.5 - UV.y) * 80.0;
+	float u = y - 0.72 * x;
+	vec3 gelap = mix(vec3(0.13, 0.12, 0.13), vec3(0.04, 0.04, 0.05), clamp(y / 26.0, 0.0, 1.0));
+	float pita1 = smoothstep(-3.5, -3.3, u) * (1.0 - smoothstep(5.5, 5.7, u));
+	float pita2 = smoothstep(8.0, 8.15, u) * (1.0 - smoothstep(9.6, 9.75, u));
+	float pita3 = smoothstep(-8.0, -7.85, u) * (1.0 - smoothstep(-6.4, -6.25, u));
+	float pita4 = smoothstep(14.0, 14.2, u) * (1.0 - smoothstep(19.0, 19.2, u));
+	vec3 oranye = mix(tema * 0.30, tema * 0.9, clamp((u + 3.5) / 9.0, 0.0, 1.0));
+	vec3 c = gelap;
+	c = mix(c, oranye, pita1 * 0.9);
+	c = mix(c, tema * 1.15, pita2);
+	c = mix(c, tema * 0.7, pita3 * 0.8);
+	c = mix(c, tema * 0.28, pita4);
+	ALBEDO = c;
+}
+"""
+
 func _buat_panggung() -> void:
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
@@ -87,38 +156,68 @@ func _buat_panggung() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var pm := ProceduralSkyMaterial.new()
-	pm.sky_top_color = Color(0.35, 0.42, 0.55)
-	pm.sky_horizon_color = Color(0.9, 0.88, 0.85)
-	pm.ground_horizon_color = Color(0.45, 0.43, 0.42)
-	pm.ground_bottom_color = Color(0.04, 0.04, 0.06)
-	pm.sun_angle_max = 25.0
+	pm.sky_top_color = Color(0.03, 0.02, 0.14)
+	pm.sky_horizon_color = Color(0.62, 0.20, 0.62)
+	pm.ground_horizon_color = Color(0.30, 0.12, 0.38)
+	pm.ground_bottom_color = Color(0.02, 0.01, 0.05)
+	pm.sky_curve = 0.18
 	sky.sky_material = pm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.7
+	env.ambient_light_energy = 0.75
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = true
-	env.glow_intensity = 0.2
+	env.glow_intensity = 0.6
+	env.glow_hdr_threshold = 1.0
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.32, 0.12, 0.45)
+	env.fog_density = 0.010
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
+	_env = env
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-38, -35, 0)
-	sun.light_energy = 1.25
-	sun.light_color = Color(1.0, 0.92, 0.82)
+	sun.rotation_degrees = Vector3(-42, -30, 0)
+	sun.light_energy = 1.5
+	sun.light_color = Color(0.8, 0.82, 1.0)
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.0
 	_vp.add_child(sun)
 	var rim := DirectionalLight3D.new()
-	rim.rotation_degrees = Vector3(-20, 150, 0)
-	rim.light_energy = 0.9
-	rim.light_color = Color(0.6, 0.75, 1.0)
+	rim.rotation_degrees = Vector3(-18, 150, 0)
+	rim.light_energy = 1.3
+	rim.light_color = Color(1.0, 0.4, 0.9)
 	_vp.add_child(rim)
 	_rim_l = rim
+	var sp := SpotLight3D.new()
+	sp.position = Vector3(0, 7.0, 2.0)
+	sp.rotation_degrees = Vector3(-90, 0, 0)
+	sp.spot_range = 12.0
+	sp.spot_angle = 38.0
+	sp.light_energy = 3.0
+	sp.light_color = Color(1.0, 0.95, 0.9)
+	_vp.add_child(sp)
+	_spot = sp
 
-	# lantai panggung bundar
+	# aspal basah luas
+	var tanah := MeshInstance3D.new()
+	var tc := CylinderMesh.new()
+	tc.top_radius = 90.0
+	tc.bottom_radius = 90.0
+	tc.height = 0.1
+	tc.radial_segments = 48
+	tanah.mesh = tc
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.03, 0.03, 0.05)
+	tmat.metallic = 0.6
+	tmat.roughness = 0.22
+	tanah.material_override = tmat
+	tanah.position = Vector3(0, -0.12, 0)
+	_vp.add_child(tanah)
+
+	# panggung bundar + cincin tema
 	var lantai := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = 4.2
@@ -127,9 +226,9 @@ func _buat_panggung() -> void:
 	cm.radial_segments = 64
 	lantai.mesh = cm
 	var lm := StandardMaterial3D.new()
-	lm.albedo_color = Color(0.07, 0.07, 0.09)
+	lm.albedo_color = Color(0.05, 0.05, 0.07)
 	lm.metallic = 0.7
-	lm.roughness = 0.28
+	lm.roughness = 0.25
 	lantai.material_override = lm
 	lantai.position = Vector3(0, -0.06, 0)
 	_vp.add_child(lantai)
@@ -146,122 +245,104 @@ func _buat_panggung() -> void:
 	cmat.emission = Color(1.0, 0.7, 0.2)
 	cmat.emission_energy_multiplier = 1.6
 	cincin.material_override = cmat
-	_mat_cincin = cmat
 	cincin.scale = Vector3(1, 0.3, 1)
 	_vp.add_child(cincin)
-	# dinding studio melengkung (sisi dalam silinder)
-	var dinding := MeshInstance3D.new()
-	var wm := CylinderMesh.new()
-	wm.top_radius = 15.0
-	wm.bottom_radius = 15.0
-	wm.height = 12.0
-	wm.radial_segments = 64
-	wm.cap_top = false
-	wm.cap_bottom = false
-	dinding.mesh = wm
-	var dmat := ShaderMaterial.new()
-	var dsh := Shader.new()
-	dsh.code = """shader_type spatial;
-render_mode unshaded, cull_front;
-uniform vec3 tema = vec3(1.0, 0.7, 0.1);
-varying vec3 wp;
-void vertex() { wp = VERTEX; }
-void fragment() {
-	float g = clamp((wp.y + 6.0) / 12.0, 0.0, 1.0);
-	float sudut = atan(wp.x, wp.z);
-	float pita = 0.5 + 0.5 * sin(sudut * 3.0 + TIME * 0.35);
-	float pita2 = 0.5 + 0.5 * sin(sudut * 5.0 - TIME * 0.22 + 1.7);
-	vec3 gelap = vec3(0.012, 0.015, 0.03);
-	vec3 bawah = tema * (0.55 + 0.25 * pita);
-	vec3 tengah = mix(tema, vec3(0.35, 0.2, 0.7), 0.5) * (0.18 + 0.12 * pita2);
-	vec3 c = mix(bawah, tengah, smoothstep(0.38, 0.62, g));
-	c = mix(c, gelap, smoothstep(0.55, 1.0, g));
-	c = mix(gelap, c, smoothstep(0.30, 0.45, g));
-	ALBEDO = c;
-}
-""";
-	dmat.shader = dsh
-	_mat_dinding = dmat
-	dinding.material_override = dmat
-	dinding.position = Vector3(0, 5.5, 0)
-	_vp.add_child(dinding)
-	# lantai luas mengilap
-	var lt := MeshInstance3D.new()
-	var lc := CylinderMesh.new()
-	lc.top_radius = 15.0
-	lc.bottom_radius = 15.0
-	lc.height = 0.1
-	lc.radial_segments = 64
-	lt.mesh = lc
-	var ltm := StandardMaterial3D.new()
-	ltm.albedo_color = Color(0.04, 0.045, 0.06)
-	ltm.metallic = 0.5
-	ltm.roughness = 0.4
-	lt.material_override = ltm
-	lt.position = Vector3(0, -0.12, 0)
-	_vp.add_child(lt)
-	# strip lampu di dinding (tiga cincin cahaya)
-	for k in 3:
-		var rg := MeshInstance3D.new()
-		var rt := TorusMesh.new()
-		rt.inner_radius = 14.8
-		rt.outer_radius = 14.95
-		rt.rings = 64
-		rt.ring_segments = 6
-		rg.mesh = rt
-		var rm := StandardMaterial3D.new()
-		rm.albedo_color = Color(0.7, 0.85, 1.0)
-		rm.emission_enabled = true
-		rm.emission = Color(0.55, 0.75, 1.0)
-		rm.emission_energy_multiplier = 0.7
-		rg.material_override = rm
-		_mat_strip.append(rm)
-		rg.position = Vector3(0, 1.2 + k * 2.6, 0)
-		_vp.add_child(rg)
-	# lampu sorot ke mobil
-	var sp := SpotLight3D.new()
-	sp.position = Vector3(0, 7.0, 2.0)
-	sp.rotation_degrees = Vector3(-90, 0, 0)
-	sp.spot_range = 12.0
-	sp.spot_angle = 38.0
-	sp.light_energy = 2.2
-	sp.light_color = Color(1.0, 0.95, 0.88)
-	_vp.add_child(sp)
-	_spot = sp
+	_mat_cincin = cmat
 
-	# tiang cahaya melingkar
-	var psh := Shader.new()
-	psh.code = """shader_type spatial;
-render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
-uniform vec3 tema = vec3(1.0, 0.7, 0.1);
-uniform float fase = 0.0;
-void fragment() {
-	float x = abs(UV.x - 0.5) * 2.0;
-	float sisi = pow(1.0 - x, 2.0);
-	float naik = pow(1.0 - UV.y, 1.5);
-	float kedip = 0.65 + 0.35 * sin(TIME * 1.3 + fase);
-	ALBEDO = tema * 1.4;
-	ALPHA = sisi * naik * 0.55 * kedip;
-}
-""";
-	for k in 12:
-		var ang := float(k) / 12.0 * TAU
-		var pl := MeshInstance3D.new()
-		var pq := QuadMesh.new()
-		pq.size = Vector2(0.9, 9.0)
-		pl.mesh = pq
-		var pmt := ShaderMaterial.new()
-		pmt.shader = psh
-		pmt.set_shader_parameter("fase", float(k) * 1.7)
-		pl.material_override = pmt
-		pl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		pl.position = Vector3(sin(ang) * 7.5, 4.5, cos(ang) * 7.5)
-		pl.rotation.y = ang + PI
-		_vp.add_child(pl)
-		_mat_pilar.append(pmt)
-	# percikan cahaya melayang naik
+	# ---- kota malam ----
+	_kota = Node3D.new()
+	_vp.add_child(_kota)
+	var gsh := Shader.new()
+	gsh.code = SHADER_GEDUNG
+	var gmat := ShaderMaterial.new()
+	gmat.shader = gsh
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var neon_cols := [Color(1.0, 0.25, 0.8), Color(0.2, 0.85, 1.0), Color(1.0, 0.8, 0.2), Color(0.6, 0.35, 1.0)]
+	for k in 54:
+		var ang := float(k) / 54.0 * TAU + rng.randf_range(-0.04, 0.04)
+		var rad := rng.randf_range(24.0, 46.0)
+		var w := rng.randf_range(5.0, 10.0)
+		var d := rng.randf_range(5.0, 10.0)
+		var h := rng.randf_range(10.0, 44.0)
+		var gd := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(w, h, d)
+		gd.mesh = bm
+		gd.material_override = gmat
+		gd.position = Vector3(sin(ang) * rad, h * 0.5 - 0.1, cos(ang) * rad)
+		gd.rotation.y = ang
+		gd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_kota.add_child(gd)
+		if k % 4 == 0:
+			var nb := MeshInstance3D.new()
+			var nq := QuadMesh.new()
+			nq.size = Vector2(rng.randf_range(1.2, 2.4), rng.randf_range(5.0, 11.0))
+			nb.mesh = nq
+			var nm := StandardMaterial3D.new()
+			var nc: Color = neon_cols[(k / 4) % neon_cols.size()]
+			nm.albedo_color = nc
+			nm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			nm.emission_enabled = true
+			nm.emission = nc
+			nm.emission_energy_multiplier = 2.2
+			nm.cull_mode = BaseMaterial3D.CULL_DISABLED
+			nb.material_override = nm
+			nb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			nb.position = Vector3(sin(ang) * (rad - d * 0.5 - 0.1), h * 0.55, cos(ang) * (rad - d * 0.5 - 0.1))
+			nb.rotation.y = ang + PI
+			_kota.add_child(nb)
+	# tiang lampu jalan
+	var lamp_m := StandardMaterial3D.new()
+	lamp_m.albedo_color = Color(1.0, 0.85, 0.6)
+	lamp_m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lamp_m.emission_enabled = true
+	lamp_m.emission = Color(1.0, 0.8, 0.5)
+	lamp_m.emission_energy_multiplier = 3.0
+	var tiang_m := StandardMaterial3D.new()
+	tiang_m.albedo_color = Color(0.08, 0.08, 0.1)
+	tiang_m.metallic = 0.7
+	tiang_m.roughness = 0.4
+	for k in 8:
+		var ang := float(k) / 8.0 * TAU + 0.2
+		var pos := Vector3(sin(ang) * 14.0, 0, cos(ang) * 14.0)
+		var tg := MeshInstance3D.new()
+		var tcm := CylinderMesh.new()
+		tcm.top_radius = 0.07
+		tcm.bottom_radius = 0.1
+		tcm.height = 6.0
+		tg.mesh = tcm
+		tg.material_override = tiang_m
+		tg.position = pos + Vector3(0, 3.0, 0)
+		_kota.add_child(tg)
+		var kp := MeshInstance3D.new()
+		var ksm := SphereMesh.new()
+		ksm.radius = 0.28
+		ksm.height = 0.56
+		kp.mesh = ksm
+		kp.material_override = lamp_m
+		kp.position = pos + Vector3(0, 6.1, 0)
+		kp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_kota.add_child(kp)
+
+	# ---- latar garasi (pita diagonal oranye) ----
+	_latar_garasi = MeshInstance3D.new()
+	var lq := QuadMesh.new()
+	lq.size = Vector2(200, 80)
+	_latar_garasi.mesh = lq
+	var lsh := Shader.new()
+	lsh.code = SHADER_LATAR_GARASI
+	_mat_latar = ShaderMaterial.new()
+	_mat_latar.shader = lsh
+	_latar_garasi.material_override = _mat_latar
+	_latar_garasi.position = Vector3(0, 18, -14)
+	_latar_garasi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_latar_garasi.visible = false
+	_vp.add_child(_latar_garasi)
+
+	# percikan cahaya
 	var pt := CPUParticles3D.new()
-	pt.amount = 90
+	pt.amount = 70
 	pt.lifetime = 6.0
 	pt.preprocess = 6.0
 	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
@@ -275,7 +356,7 @@ void fragment() {
 	pt.initial_velocity_min = 0.35
 	pt.initial_velocity_max = 0.9
 	pt.scale_amount_min = 0.5
-	pt.scale_amount_max = 1.6
+	pt.scale_amount_max = 1.5
 	pt.position = Vector3(0, 0.1, 0)
 	var sm := SphereMesh.new()
 	sm.radius = 0.03
@@ -296,12 +377,15 @@ void fragment() {
 
 	_putar = Node3D.new()
 	_vp.add_child(_putar)
-	var cam := Camera3D.new()
-	cam.fov = 34.0
-	cam.position = Vector3(5.4, 1.5, 8.6)
-	_vp.add_child(cam)
-	cam.look_at_from_position(Vector3(5.4, 1.5, 8.6), Vector3(0, 0.7, 0), Vector3.UP)
-	cam.current = true
+	_cam = Camera3D.new()
+	_cam.fov = 36.0
+	_vp.add_child(_cam)
+	_cam_pos = CAM_LOBI[0]
+	_cam_lihat = CAM_LOBI[1]
+	_cam_tpos = CAM_LOBI[0]
+	_cam_tlihat = CAM_LOBI[1]
+	_cam.look_at_from_position(_cam_pos, _cam_lihat, Vector3.UP)
+	_cam.current = true
 
 
 func _pajang(id: String) -> void:
@@ -374,94 +458,398 @@ func _panel(warna: Color) -> PanelContainer:
 	return p
 
 
+func _kartu(warna: Color, alfa: float = 0.78) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.03, 0.06, alfa)
+	sb.border_color = warna
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	return sb
+
+
+func _tombol_datar(teks: String, warna: Color, fs: int, ukuran: Vector2) -> Button:
+	var b := Button.new()
+	b.text = teks
+	b.custom_minimum_size = ukuran
+	b.add_theme_font_size_override("font_size", fs)
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(k, Color(1, 1, 1))
+	b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.5))
+	var n := _kartu(warna, 0.8)
+	n.set_corner_radius_all(8)
+	var h := _kartu(warna, 0.95)
+	h.bg_color = Color(warna.r * 0.45, warna.g * 0.45, warna.b * 0.45, 0.95)
+	var d := _kartu(warna.darkened(0.5), 0.5)
+	b.add_theme_stylebox_override("normal", n)
+	b.add_theme_stylebox_override("hover", h)
+	b.add_theme_stylebox_override("pressed", h)
+	b.add_theme_stylebox_override("disabled", d)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	return b
+
+
 func _buat_ui() -> void:
-	# judul + koin
-	var judul := _label("TURBO DRIFT", 54, Color(1.0, 0.82, 0.3))
-	judul.position = Vector2(34, 14)
-	add_child(judul)
-	_lbl_koin = _label("", 40, Color(1.0, 0.9, 0.4))
-	_lbl_koin.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_lbl_koin.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_lbl_koin.offset_left = -440
-	_lbl_koin.offset_right = -34
-	_lbl_koin.offset_top = 20
-	_lbl_koin.offset_bottom = 70
-	add_child(_lbl_koin)
+	# ---------------- elemen selalu tampil: kartu pemain + koin ----------------
+	var pemain := PanelContainer.new()
+	_kartu_pemain = pemain
+	pemain.add_theme_stylebox_override("panel", _kartu(Color(0.7, 0.6, 1.0)))
+	pemain.position = Vector2(24, 18)
+	add_child(pemain)
+	var hp := HBoxContainer.new()
+	hp.add_theme_constant_override("separation", 12)
+	pemain.add_child(hp)
+	var avatar := Control.new()
+	avatar.custom_minimum_size = Vector2(56, 56)
+	avatar.draw.connect(func():
+		avatar.draw_circle(Vector2(28, 28), 27, Color(0.35, 0.25, 0.75))
+		avatar.draw_arc(Vector2(28, 28), 27, 0, TAU, 40, Color(1, 1, 1, 0.8), 2.0, true)
+		avatar.draw_circle(Vector2(28, 21), 9, Color(0.95, 0.85, 0.8))
+		avatar.draw_circle(Vector2(28, 50), 18, Color(0.95, 0.95, 1.0)))
+	hp.add_child(avatar)
+	var vp2 := VBoxContainer.new()
+	hp.add_child(vp2)
+	_lbl_pemain = _label(Gm.nama_pemain, 26, Color(1, 1, 1))
+	vp2.add_child(_lbl_pemain)
+	_lbl_pakai = _label("", 18, Color(0.75, 0.85, 1.0))
+	vp2.add_child(_lbl_pakai)
 
-	# daftar mobil (kiri)
-	var kiri := _panel(Color(0.4, 0.7, 1.0))
-	kiri.position = Vector2(30, 100)
-	kiri.custom_minimum_size = Vector2(320, 0)
-	add_child(kiri)
-	var vk := VBoxContainer.new()
-	vk.add_theme_constant_override("separation", 10)
-	kiri.add_child(vk)
-	vk.add_child(_label("TOKO & GARASI", 28, Color(0.7, 0.88, 1.0)))
-	for id in Gm.URUTAN:
-		var b := _tombol("", Color(0.45, 0.72, 1.0), 20, 300, 78)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.pressed.connect(_pilih_pajang.bind(id))
-		vk.add_child(b)
-		_daftar_btn[id] = b
-		_pasang_ikon(b, id)
+	var chip := PanelContainer.new()
+	chip.add_theme_stylebox_override("panel", _kartu(Color(1.0, 0.8, 0.3), 0.85))
+	chip.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	chip.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	chip.offset_left = -250
+	chip.offset_right = -24
+	chip.offset_top = 22
+	add_child(chip)
+	var hk := HBoxContainer.new()
+	hk.add_theme_constant_override("separation", 10)
+	chip.add_child(hk)
+	var koin_ic := Control.new()
+	koin_ic.custom_minimum_size = Vector2(34, 34)
+	koin_ic.draw.connect(func():
+		koin_ic.draw_circle(Vector2(17, 17), 15, Color(1.0, 0.75, 0.15))
+		koin_ic.draw_arc(Vector2(17, 17), 15, 0, TAU, 32, Color(1, 0.95, 0.6), 2.0, true)
+		koin_ic.draw_arc(Vector2(17, 17), 8, 0, TAU, 24, Color(0.8, 0.5, 0.05), 2.5, true))
+	hk.add_child(koin_ic)
+	_lbl_koin = _label("", 30, Color(1.0, 0.93, 0.5))
+	hk.add_child(_lbl_koin)
 
-	# detail (kanan)
-	var kanan := _panel(Color(1.0, 0.75, 0.3))
-	kanan.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	kanan.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	kanan.offset_left = -350
-	kanan.offset_right = -30
-	kanan.offset_top = 80
-	add_child(kanan)
-	var vd := VBoxContainer.new()
-	vd.add_theme_constant_override("separation", 5)
-	kanan.add_child(vd)
-	_lbl_nama = _label("", 28, Color(1.0, 0.9, 0.5))
-	_lbl_nama.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_lbl_nama.custom_minimum_size = Vector2(300, 0)
-	vd.add_child(_lbl_nama)
-	_lbl_warna = _label("", 22, Color(0.8, 0.85, 0.9))
-	vd.add_child(_lbl_warna)
-	_lbl_info = _label("", 22, Color(0.85, 0.9, 1.0))
-	_lbl_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_lbl_info.custom_minimum_size = Vector2(300, 0)
-	vd.add_child(_lbl_info)
-	vd.add_child(_label("TENAGA", 20))
-	_bar_daya = _bar()
-	vd.add_child(_bar_daya)
-	vd.add_child(_label("KECEPATAN MAKS", 20))
-	_bar_vmaks = _bar()
-	vd.add_child(_bar_vmaks)
-	_lbl_fitur = _label("", 24, Color(0.55, 0.85, 1.0))
-	vd.add_child(_lbl_fitur)
-	_btn_aksi = _tombol("", Color(0.5, 1.0, 0.6), 28, 300, 60)
-	_btn_aksi.pressed.connect(_aksi)
-	vd.add_child(_btn_aksi)
-	_lbl_pesan = _label("", 22, Color(1.0, 0.7, 0.5))
-	_lbl_pesan.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_lbl_pesan.custom_minimum_size = Vector2(300, 0)
-	vd.add_child(_lbl_pesan)
+	_buat_ui_lobi()
+	_buat_ui_garasi()
+	_buat_panel_online()
 
-	# tombol utama (bawah tengah)
-	var bawah := HBoxContainer.new()
-	bawah.add_theme_constant_override("separation", 22)
-	bawah.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	bawah.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	bawah.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bawah.offset_bottom = -26
-	add_child(bawah)
-	var b_solo := _tombol("BALAPAN", Color(0.5, 1.0, 0.6), 40, 320, 84)
-	b_solo.pressed.connect(_mulai_solo)
-	bawah.add_child(b_solo)
-	_btn_lawan = _tombol("", Color(0.8, 0.8, 0.9), 24, 180, 84)
-	_btn_lawan.pressed.connect(_ganti_lawan)
-	bawah.add_child(_btn_lawan)
-	var b_on := _tombol("ONLINE", Color(0.5, 0.75, 1.0), 40, 320, 84)
+
+func _buat_ui_lobi() -> void:
+	_ui_lobi = Control.new()
+	_ui_lobi.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_ui_lobi.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ui_lobi)
+
+	# judul miring kiri
+	var jd := _label("TURBO DRIFT", 50, Color(1.0, 0.85, 0.35))
+	jd.position = Vector2(24, 100)
+	jd.rotation = -0.03
+	_ui_lobi.add_child(jd)
+
+	# kartu promo (kiri)
+	var kol := VBoxContainer.new()
+	kol.add_theme_constant_override("separation", 10)
+	kol.position = Vector2(24, 170)
+	_ui_lobi.add_child(kol)
+	for item in [["viola", "MOBIL BARU", Color(1.0, 0.85, 0.2)], ["volt", "BISA TERBANG", Color(0.3, 0.85, 1.0)], ["verde", "KROM KAMELEON", Color(0.5, 1.0, 0.6)]]:
+		var id: String = item[0]
+		var kb := _tombol_datar("", item[2], 20, Vector2(330, 92))
+		kb.pressed.connect(_buka_garasi.bind(id))
+		kol.add_child(kb)
+		var tag := _label(item[1], 17, item[2])
+		tag.position = Vector2(12, 4)
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		kb.add_child(tag)
+		var nm := _label(Gm.profil(id)["nama"], 20, Color(1, 1, 1))
+		nm.position = Vector2(12, 30)
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		kb.add_child(nm)
+		var harga := _label("%s koin" % _rp(int(Gm.profil(id)["harga"])), 17, Color(1.0, 0.9, 0.5))
+		harga.position = Vector2(12, 60)
+		harga.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		kb.add_child(harga)
+		_pasang_ikon(kb, id)
+
+	# bilah navigasi bawah
+	var nav := PanelContainer.new()
+	var nsb := _kartu(Color(0.5, 0.5, 0.7), 0.85)
+	nsb.set_corner_radius_all(0)
+	nsb.border_width_left = 0
+	nsb.border_width_right = 0
+	nsb.border_width_bottom = 0
+	nav.add_theme_stylebox_override("panel", nsb)
+	nav.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	nav.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	nav.offset_left = 0
+	nav.offset_bottom = 0
+	nav.custom_minimum_size = Vector2(690, 82)
+	_ui_lobi.add_child(nav)
+	var hn := HBoxContainer.new()
+	hn.add_theme_constant_override("separation", 22)
+	nav.add_child(hn)
+	var b_mobil := _tombol_datar("MOBIL", Color(0.6, 0.7, 1.0), 26, Vector2(190, 62))
+	b_mobil.pressed.connect(_buka_garasi.bind(""))
+	hn.add_child(b_mobil)
+	var b_on := _tombol_datar("ONLINE", Color(0.4, 0.8, 1.0), 26, Vector2(190, 62))
 	b_on.pressed.connect(_buka_online)
-	bawah.add_child(b_on)
+	hn.add_child(b_on)
+	_btn_lawan = _tombol_datar("", Color(0.8, 0.8, 0.9), 22, Vector2(200, 62))
+	_btn_lawan.pressed.connect(_ganti_lawan)
+	hn.add_child(_btn_lawan)
 	_perbarui_lawan()
 
-	_buat_panel_online()
+	# tombol BALAP bulat merah
+	var balap := Button.new()
+	balap.text = "BALAP"
+	balap.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	balap.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	balap.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	balap.offset_left = -230
+	balap.offset_right = -34
+	balap.offset_top = -214
+	balap.offset_bottom = -18
+	balap.add_theme_font_size_override("font_size", 38)
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		balap.add_theme_color_override(k, Color(1, 1, 1))
+	balap.add_theme_color_override("font_outline_color", Color(0.4, 0, 0, 0.9))
+	balap.add_theme_constant_override("outline_size", 6)
+	var bn := StyleBoxFlat.new()
+	bn.bg_color = Color(0.88, 0.05, 0.1)
+	bn.border_color = Color(1.0, 0.7, 0.7)
+	bn.set_border_width_all(5)
+	bn.set_corner_radius_all(120)
+	bn.shadow_color = Color(1.0, 0.1, 0.2, 0.55)
+	bn.shadow_size = 22
+	var bh := bn.duplicate()
+	bh.bg_color = Color(1.0, 0.2, 0.25)
+	balap.add_theme_stylebox_override("normal", bn)
+	balap.add_theme_stylebox_override("hover", bh)
+	balap.add_theme_stylebox_override("pressed", bh)
+	balap.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	balap.pressed.connect(_mulai_solo)
+	_ui_lobi.add_child(balap)
+	var ket := _label("vs AI  •  %d putaran" % Gm.PUTARAN, 18, Color(1, 1, 1, 0.85))
+	ket.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	ket.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ket.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	ket.offset_left = -270
+	ket.offset_right = -34
+	ket.offset_top = -246
+	ket.offset_bottom = -216
+	ket.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_ui_lobi.add_child(ket)
+
+
+func _buat_ui_garasi() -> void:
+	_ui_garasi = Control.new()
+	_ui_garasi.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_ui_garasi.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui_garasi.visible = false
+	add_child(_ui_garasi)
+
+	# bilah judul merah miring + tombol kembali
+	var judul := Control.new()
+	judul.position = Vector2(0, 0)
+	judul.custom_minimum_size = Vector2(600, 70)
+	judul.size = Vector2(600, 70)
+	judul.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	judul.draw.connect(func():
+		judul.draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(520, 0), Vector2(480, 70), Vector2(0, 70)]), Color(0.04, 0.04, 0.06, 0.92))
+		judul.draw_polyline(PackedVector2Array([Vector2(0, 70), Vector2(480, 70), Vector2(520, 0)]), Color(0.95, 0.1, 0.15), 3.0, true))
+	_ui_garasi.add_child(judul)
+	var kembali := _tombol_datar("<  LOBI", Color(0.95, 0.2, 0.25), 24, Vector2(150, 54))
+	kembali.position = Vector2(10, 8)
+	kembali.pressed.connect(_tutup_garasi)
+	_ui_garasi.add_child(kembali)
+	var jt := _label("Ganti Mobil", 34, Color(1, 1, 1))
+	jt.position = Vector2(180, 12)
+	_ui_garasi.add_child(jt)
+
+	# kartu info (kiri atas)
+	_lbl_nama = _label("", 34, Color(1, 1, 1))
+	_lbl_nama.position = Vector2(30, 92)
+	_lbl_nama.custom_minimum_size = Vector2(520, 0)
+	_ui_garasi.add_child(_lbl_nama)
+	_lbl_skor = _label("", 22, Color(1, 1, 1))
+	_lbl_skor.position = Vector2(30, 140)
+	_ui_garasi.add_child(_lbl_skor)
+	_lbl_warna = _label("", 20, Color(0.8, 0.85, 0.95))
+	_lbl_warna.position = Vector2(230, 142)
+	_ui_garasi.add_child(_lbl_warna)
+
+	# tab INFO MOBIL (merah)
+	var tab := Control.new()
+	tab.position = Vector2(0, 190)
+	tab.size = Vector2(230, 70)
+	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tab.draw.connect(func():
+		tab.draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(230, 0), Vector2(230, 70), Vector2(0, 70)]), Color(0.9, 0.1, 0.15, 0.95)))
+	_ui_garasi.add_child(tab)
+	var tl := _label("INFO MOBIL", 26, Color(1, 1, 1))
+	tl.position = Vector2(26, 206)
+	_ui_garasi.add_child(tl)
+
+	# radar statistik
+	_radar = Control.new()
+	_radar.position = Vector2(60, 282)
+	_radar.size = Vector2(380, 300)
+	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radar.draw.connect(_gambar_radar)
+	_ui_garasi.add_child(_radar)
+	_lbl_axis = []
+	for k in 4:
+		var l := _label("", 20, Color(1, 1, 1))
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_radar.add_child(l)
+		_lbl_axis.append(l)
+
+	# info & fitur
+	_lbl_info = _label("", 20, Color(0.85, 0.9, 1.0))
+	_lbl_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lbl_info.custom_minimum_size = Vector2(380, 0)
+	_lbl_info.position = Vector2(30, 600)
+	_ui_garasi.add_child(_lbl_info)
+	_lbl_fitur = _label("", 22, Color(0.55, 0.85, 1.0))
+	_lbl_fitur.position = Vector2(30, 676)
+	_ui_garasi.add_child(_lbl_fitur)
+
+	# panah ganti mobil
+	var kiri := _tombol_datar("<", Color(0.9, 0.9, 1.0), 40, Vector2(76, 76))
+	kiri.position = Vector2(470, 560)
+	kiri.pressed.connect(_geser.bind(-1))
+	_ui_garasi.add_child(kiri)
+	var kanan := _tombol_datar(">", Color(0.9, 0.9, 1.0), 40, Vector2(76, 76))
+	kanan.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	kanan.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	kanan.offset_left = -430
+	kanan.offset_right = -354
+	kanan.offset_top = 560
+	kanan.offset_bottom = 636
+	kanan.pressed.connect(_geser.bind(1))
+	_ui_garasi.add_child(kanan)
+
+	# aksi beli/pakai
+	_btn_aksi = _tombol_datar("", Color(0.5, 1.0, 0.6), 30, Vector2(300, 78))
+	_btn_aksi.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_btn_aksi.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_btn_aksi.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_btn_aksi.offset_left = -330
+	_btn_aksi.offset_right = -30
+	_btn_aksi.offset_top = -100
+	_btn_aksi.offset_bottom = -22
+	_btn_aksi.pressed.connect(_aksi)
+	_ui_garasi.add_child(_btn_aksi)
+	_lbl_pesan = _label("", 22, Color(1.0, 0.75, 0.5))
+	_lbl_pesan.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_lbl_pesan.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_lbl_pesan.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_lbl_pesan.offset_left = -560
+	_lbl_pesan.offset_right = -30
+	_lbl_pesan.offset_top = -144
+	_lbl_pesan.offset_bottom = -106
+	_lbl_pesan.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_ui_garasi.add_child(_lbl_pesan)
+
+
+func _nilai_statistik(id: String) -> Array:
+	var p: Dictionary = Gm.profil(id)
+	var daya: float = p["daya"]
+	var vm: float = p["vmaks"]
+	var akselerasi := clampf((daya - 0.8) / 0.65, 0.1, 1.0)
+	var kecepatan := clampf((vm - 0.85) / 0.30, 0.1, 1.0)
+	var kemudi := 0.86 if p["ev"] else 0.72
+	var drift := clampf(0.5 + (daya - 1.0) * 0.9, 0.2, 1.0)
+	# urutan: atas, kanan, bawah, kiri
+	return [kecepatan, kemudi, drift, akselerasi]
+
+
+func _nilai_huruf(v: float) -> String:
+	if v >= 0.92:
+		return "S"
+	if v >= 0.82:
+		return "A+"
+	if v >= 0.72:
+		return "A"
+	if v >= 0.62:
+		return "B+"
+	if v >= 0.5:
+		return "B"
+	return "C"
+
+
+func _gambar_radar() -> void:
+	var c := Vector2(190, 150)
+	var rr := 100.0
+	var nilai := _nilai_statistik(_id_pajang)
+	var arah := [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]
+	_radar.draw_circle(c, rr + 8, Color(0.05, 0.08, 0.15, 0.85))
+	for s in [0.33, 0.66, 1.0]:
+		_radar.draw_arc(c, rr * s, 0, TAU, 48, Color(0.5, 0.65, 1.0, 0.35), 1.5, true)
+	for k in 4:
+		_radar.draw_line(c, c + arah[k] * (rr + 6), Color(0.6, 0.7, 1.0, 0.5), 1.5)
+	# irisan berwarna (biru / hijau bergantian)
+	for k in 4:
+		var a0: Vector2 = arah[k] * rr * nilai[k]
+		var a1: Vector2 = arah[(k + 1) % 4] * rr * nilai[(k + 1) % 4]
+		var warna := Color(0.2, 0.45, 0.95, 0.75) if k % 2 == 0 else Color(0.25, 0.7, 0.4, 0.75)
+		_radar.draw_colored_polygon(PackedVector2Array([c, c + a0, c + a1]), warna)
+	var tepi := PackedVector2Array()
+	for k in 4:
+		tepi.append(c + arah[k] * rr * nilai[k])
+	tepi.append(tepi[0])
+	_radar.draw_polyline(tepi, Color(1, 1, 1, 0.85), 2.0, true)
+	_radar.draw_circle(c, 4, Color(1, 1, 1))
+	var nama := ["KECEPATAN MAKS", "KEMUDI", "DRIFT SUDUT", "AKSELERASI"]
+	var pos := [Vector2(c.x - 70, 4), Vector2(c.x + rr + 14, c.y - 24), Vector2(c.x - 46, c.y + rr + 14), Vector2(0, c.y - 24)]
+	for k in 4:
+		if _lbl_axis.size() > k:
+			_lbl_axis[k].text = "%s\n%s" % [_nilai_huruf(nilai[k]), nama[k]]
+			_lbl_axis[k].add_theme_font_size_override("font_size", 16)
+			_lbl_axis[k].position = pos[k]
+
+
+func _geser(arah: int) -> void:
+	var i := Gm.URUTAN.find(_id_pajang)
+	i = (i + arah + Gm.URUTAN.size()) % Gm.URUTAN.size()
+	_pilih_pajang(Gm.URUTAN[i])
+
+
+func _buka_garasi(id: String = "") -> void:
+	if id != "":
+		_pilih_pajang(id)
+	_atur_mode(true)
+
+
+func _tutup_garasi() -> void:
+	if _id_pajang != Gm.terpilih:
+		_pajang(Gm.terpilih)
+	_lbl_pesan.text = ""
+	_atur_mode(false)
+	_segarkan()
+
+
+func _atur_mode(garasi: bool) -> void:
+	_mode_garasi = garasi
+	_ui_lobi.visible = not garasi
+	_kartu_pemain.visible = not garasi
+	_ui_garasi.visible = garasi
+	_kota.visible = not garasi
+	_latar_garasi.visible = garasi
+	var t: Array = CAM_GARASI if garasi else CAM_LOBI
+	_cam_tpos = t[0]
+	_cam_tlihat = t[1]
+	if _env:
+		_env.fog_enabled = not garasi
+	_segarkan()
 
 
 func _bar() -> ProgressBar:
@@ -541,22 +929,19 @@ func _gambar_ikon(ic: Control, id: String) -> void:
 
 
 func _segarkan() -> void:
-	_lbl_koin.text = "KOIN  %s" % _rp(Gm.koin)
-	for id in Gm.URUTAN:
-		var p: Dictionary = Gm.profil(id)
-		var b: Button = _daftar_btn[id]
-		var status := "DIMILIKI" if Gm.punya(id) else "%s koin" % _rp(int(p["harga"]))
-		if Gm.terpilih == id:
-			status = "DIPAKAI"
-		b.text = "%s\n%s" % [p["nama"], status]
-		b.add_theme_font_size_override("font_size", 21)
+	_lbl_koin.text = _rp(Gm.koin)
+	_lbl_pemain.text = Gm.nama_pemain
+	_lbl_pakai.text = Gm.profil(Gm.terpilih)["nama"]
 	var p2: Dictionary = Gm.profil(_id_pajang)
 	_lbl_nama.text = p2["nama"]
-	_lbl_warna.text = "Warna: %s" % p2["warna"]
+	var nilai := _nilai_statistik(_id_pajang)
+	var skor := int((nilai[0] + nilai[1] + nilai[2] + nilai[3]) * 250.0)
+	_lbl_skor.text = "SKOR  %d" % skor
+	_lbl_warna.text = p2["warna"]
 	_lbl_info.text = p2["info"]
-	_bar_daya.value = float(p2["daya"]) / 1.3 * 100.0
-	_bar_vmaks.value = float(p2["vmaks"]) / 1.1 * 100.0
 	_lbl_fitur.text = "BISA TERBANG" if p2["terbang"] else ("Mobil listrik" if p2["ev"] else "Mesin V12")
+	if _radar:
+		_radar.queue_redraw()
 	if Gm.punya(_id_pajang):
 		if Gm.terpilih == _id_pajang:
 			_btn_aksi.text = "DIPAKAI"
@@ -766,24 +1151,21 @@ func _toggle_siap() -> void:
 
 func _terapkan_tema(delta: float) -> void:
 	_tema = _tema.lerp(_tema_t, 1.0 - exp(-4.0 * delta))
-	if _mat_dinding:
-		_mat_dinding.set_shader_parameter("tema", Vector3(_tema.r, _tema.g, _tema.b))
-	for pm in _mat_pilar:
-		pm.set_shader_parameter("tema", Vector3(_tema.r, _tema.g, _tema.b))
 	var denyut := 1.3 + 0.7 * sin(_t * 2.2)
 	if _mat_cincin:
 		_mat_cincin.albedo_color = _tema
 		_mat_cincin.emission = _tema
 		_mat_cincin.emission_energy_multiplier = denyut
-	for rm in _mat_strip:
-		rm.emission = _tema.lerp(Color(1, 1, 1), 0.35)
-		rm.albedo_color = _tema
 	if _mat_partikel:
 		_mat_partikel.albedo_color = _tema.lerp(Color(1, 1, 1), 0.4)
-	if _spot:
-		_spot.light_color = Color(1, 1, 1).lerp(_tema, 0.25)
+	if _mat_latar:
+		_mat_latar.set_shader_parameter("tema", Vector3(_tema.r, _tema.g, _tema.b))
 	if _rim_l:
-		_rim_l.light_color = _tema.lerp(Color(1, 1, 1), 0.3)
+		_rim_l.light_color = Color(1.0, 0.4, 0.9).lerp(_tema, 0.5)
+	if _cam:
+		_cam_pos = _cam_pos.lerp(_cam_tpos, 1.0 - exp(-3.5 * delta))
+		_cam_lihat = _cam_lihat.lerp(_cam_tlihat, 1.0 - exp(-3.5 * delta))
+		_cam.look_at_from_position(_cam_pos, _cam_lihat, Vector3.UP)
 
 
 func _process(delta: float) -> void:
