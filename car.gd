@@ -85,6 +85,9 @@ uniform float rem_glow = 1.6;
 uniform float ev = 0.0;
 uniform vec4 paint2 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 uniform float iri = 0.0;
+uniform float kaca_buka = 1.0;
+uniform vec4 interior : source_color = vec4(0.03, 0.03, 0.035, 1.0);
+uniform vec4 aksen : source_color = vec4(0.8, 0.05, 0.05, 1.0);
 varying vec3 lp;
 varying vec3 ln;
 void vertex() {
@@ -118,6 +121,7 @@ void fragment() {
 	float sidew = step(zmin, lp.z) * step(lp.z, zmax) * step(1.0, lp.y) * (1.0 - step(1.25, lp.y)) * step(0.2, abs(ln.x)) * step(0.7, ax);
 	float rearw = step(0.88, lp.z) * (1.0 - step(1.08, lp.z)) * step(0.98, lp.y) * (1.0 - step(0.5, ax)) * step(0.3, ln.y);
 	float glass = clamp(wind + sidew + rearw, 0.0, 1.0);
+	if (glass > 0.5 && kaca_buka > 0.5) { discard; }
 
 	// intake samping besar bersirip, bumper depan, rok, panel belakang, ventilasi kap, bingkai mesin
 	float intake = step(0.5, lp.z) * (1.0 - step(1.12, lp.z)) * step(0.5, lp.y) * (1.0 - step(0.62 + (lp.z - 0.5) * 0.55, lp.y)) * step(0.94, ax) * step(0.5, abs(ln.x));
@@ -204,6 +208,17 @@ void fragment() {
 	RIM = 0.2;
 	RIM_TINT = 0.5;
 	EMISSION = vec3(0.9, 0.95, 1.0) * lampY * 6.0 + vec3(1.0, 0.03, 0.03) * tail * rem_glow;
+	if (!FRONT_FACING) {
+		// sisi dalam bodi = pelapis kabin (kulit gelap, garis jahitan beraksen di sabuk jendela)
+		float jahit = line(abs(lp.y - 0.92), 0.012) * step(0.3, ax);
+		ALBEDO = mix(interior.rgb, aksen.rgb, jahit);
+		METALLIC = 0.0;
+		ROUGHNESS = 0.65;
+		CLEARCOAT = 0.0;
+		RIM = 0.0;
+		EMISSION = vec3(0.0);
+	}
+	// @FINAL
 }
 """
 
@@ -280,6 +295,8 @@ var _yaw0 := 0.0
 var _mat_bodi: ShaderMaterial
 var _mat_body: StandardMaterial3D
 var _mat_kaca: StandardMaterial3D
+var _mat_kaca_tembus: ShaderMaterial
+var interior_cahaya := false
 var _mat_karbon: StandardMaterial3D
 var _mat_ban: StandardMaterial3D
 var _mat_velg: StandardMaterial3D
@@ -379,6 +396,11 @@ func _siapkan_material() -> void:
 	_mat_body.metallic = 0.85
 	_mat_body.roughness = 0.22
 
+	var sh_kaca := Shader.new()
+	sh_kaca.code = SHADER_BODI.replace("render_mode cull_disabled;", "render_mode cull_disabled, blend_mix, depth_draw_never;").replace("	if (glass > 0.5 && kaca_buka > 0.5) { discard; }\n", "	if (glass < 0.5) { discard; }\n").replace("// @FINAL", "ALBEDO = vec3(0.015, 0.03, 0.06); ALPHA = 0.28; METALLIC = 0.9; ROUGHNESS = 0.04; SPECULAR = 0.8; CLEARCOAT = 0.0; RIM = 0.0; EMISSION = vec3(0.0);")
+	_mat_kaca_tembus = ShaderMaterial.new()
+	_mat_kaca_tembus.shader = sh_kaca
+	_mat_kaca_tembus.set_shader_parameter("kaca_buka", 0.0)
 	_mat_kaca = StandardMaterial3D.new()
 	_mat_kaca.albedo_color = Color(0.02, 0.03, 0.07)
 	_mat_kaca.metallic = 0.9
@@ -601,6 +623,12 @@ func _buat_body() -> void:
 	bodi.mesh = _bangun_bodi()
 	bodi.material_override = _mat_bodi
 	v.add_child(bodi)
+	var kaca_t := MeshInstance3D.new()
+	kaca_t.mesh = bodi.mesh
+	kaca_t.material_override = _mat_kaca_tembus
+	kaca_t.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	v.add_child(kaca_t)
+	_buat_interior(v)
 
 	# bagian dalam sumur roda (gelap)
 	for sx in [-1.0, 1.0]:
@@ -649,10 +677,102 @@ func _buat_body() -> void:
 		# dua knalpot heksagonal di tengah belakang
 		if not ev:
 			_silinder(v, 0.1, 0.3, Vector3(sx * 0.22, 0.48, 2.45), Vector3(90, 0, 0), _mat_pipa, 6)
-	if not ev:
+	if not ev and str(profil.get("bodi", "lambo")) != "roadster":
 		_buat_mesin(v)
 	else:
-		_sayap.visible = false
+		_sayap.visible = bool(profil.get("sayap_gt", false))
+
+
+func _buat_interior(v: Node3D) -> void:
+	var warna_in: Color = profil.get("interior", Color(0.03, 0.03, 0.035))
+	var warna_ak: Color = profil.get("aksen", Color(0.8, 0.05, 0.05))
+	var kulit := StandardMaterial3D.new()
+	kulit.albedo_color = warna_in.lightened(0.04)
+	kulit.roughness = 0.8
+	kulit.specular = 0.25
+	kulit.metallic = 0.0
+	var jok := StandardMaterial3D.new()
+	jok.albedo_color = warna_in.lerp(warna_ak, 0.18).lightened(0.04)
+	jok.roughness = 0.5
+	var ak := StandardMaterial3D.new()
+	ak.albedo_color = warna_ak
+	ak.roughness = 0.4
+	ak.emission_enabled = true
+	ak.emission = warna_ak
+	ak.emission_energy_multiplier = 0.35
+	var layar := StandardMaterial3D.new()
+	layar.albedo_color = Color(0.1, 0.6, 1.0)
+	layar.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	layar.emission_enabled = true
+	layar.emission = Color(0.2, 0.7, 1.0)
+	layar.emission_energy_multiplier = 1.6
+	var hiasan := StandardMaterial3D.new()
+	hiasan.albedo_color = Color(0.55, 0.57, 0.62)
+	hiasan.metallic = 0.9
+	hiasan.roughness = 0.25
+	var ri := Node3D.new()
+	ri.name = "Interior"
+	v.add_child(ri)
+	# dasbor melengkung + kap instrumen
+	_box(ri, Vector3(1.5, 0.16, 0.42), Vector3(0, 0.78, -0.66), kulit, Vector3(-8, 0, 0))
+	_box(ri, Vector3(1.5, 0.05, 0.12), Vector3(0, 0.88, -0.50), kulit)
+	_box(ri, Vector3(0.62, 0.07, 0.2), Vector3(-0.36, 0.92, -0.46), kulit)           # kap instrumen
+	_box(ri, Vector3(0.40, 0.11, 0.012), Vector3(-0.36, 0.865, -0.36), layar, Vector3(-65, 0, 0))  # panel instrumen
+	_box(ri, Vector3(0.30, 0.17, 0.012), Vector3(0.12, 0.83, -0.46), layar, Vector3(-62, 0, 0))   # layar tengah
+	for sx in [-1.0, 1.0]:
+		_box(ri, Vector3(0.12, 0.012, 0.012), Vector3(sx * 0.62, 0.82, -0.46), ak)               # lis aksen dasbor
+	# setir
+	var sw := Node3D.new()
+	sw.position = Vector3(-0.36, 0.80, -0.20)
+	sw.rotation_degrees = Vector3(-62, 0, 0)
+	ri.add_child(sw)
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.125
+	tm.outer_radius = 0.155
+	tm.rings = 32
+	tm.ring_segments = 10
+	var tor := MeshInstance3D.new()
+	tor.mesh = tm
+	tor.material_override = kulit
+	sw.add_child(tor)
+	_box(sw, Vector3(0.26, 0.03, 0.03), Vector3.ZERO, hiasan)
+	_box(sw, Vector3(0.05, 0.03, 0.12), Vector3(0, 0, 0.08), hiasan)
+	_box(sw, Vector3(0.03, 0.012, 0.03), Vector3(0, 0.02, -0.14), ak)                       # penanda tengah atas
+	_silinder(ri, 0.045, 0.34, Vector3(-0.36, 0.78, -0.40), Vector3(-62, 0, 0), kulit, 10)    # kolom setir
+	# kursi sport: dudukan, sandaran, penyangga samping, sandaran kepala
+	for sx in [-0.36, 0.36]:
+		_box(ri, Vector3(0.48, 0.10, 0.52), Vector3(sx, 0.50, 0.36), jok)
+		_box(ri, Vector3(0.48, 0.52, 0.12), Vector3(sx, 0.76, 0.66), jok, Vector3(-10, 0, 0))
+		for sd in [-1.0, 1.0]:
+			_box(ri, Vector3(0.07, 0.42, 0.14), Vector3(sx + sd * 0.235, 0.74, 0.62), jok, Vector3(-10, 0, 0))
+			_box(ri, Vector3(0.07, 0.10, 0.40), Vector3(sx + sd * 0.235, 0.54, 0.36), jok)
+		_box(ri, Vector3(0.24, 0.17, 0.10), Vector3(sx, 1.03, 0.72), jok, Vector3(-10, 0, 0))
+		_box(ri, Vector3(0.20, 0.012, 0.012), Vector3(sx, 0.97, 0.665), ak, Vector3(-10, 0, 0))
+	# konsol tengah + tuas + tombol
+	_box(ri, Vector3(0.22, 0.20, 0.95), Vector3(0, 0.45, 0.20), kulit)
+	_box(ri, Vector3(0.10, 0.012, 0.30), Vector3(0, 0.555, 0.0), hiasan)
+	_silinder(ri, 0.022, 0.12, Vector3(0, 0.62, 0.12), Vector3.ZERO, hiasan, 10)
+	var knob := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.04
+	sm.height = 0.08
+	knob.mesh = sm
+	knob.material_override = ak
+	knob.position = Vector3(0, 0.69, 0.12)
+	ri.add_child(knob)
+	# panel pintu + lis aksen
+	for sx in [-1.0, 1.0]:
+		_box(ri, Vector3(0.06, 0.34, 1.05), Vector3(sx * 0.80, 0.62, 0.15), kulit)
+		_box(ri, Vector3(0.015, 0.02, 0.95), Vector3(sx * 0.768, 0.74, 0.15), ak)
+	# lampu kabin lembut (hanya di pajangan)
+	if interior_cahaya:
+		var li := OmniLight3D.new()
+		li.position = Vector3(0, 0.95, 0.1)
+		li.omni_range = 2.2
+		li.light_energy = 0.7
+		li.light_color = Color(1.0, 0.85, 0.7)
+		li.shadow_enabled = false
+		ri.add_child(li)
 
 
 func _buat_mesin(v: Node3D) -> void:
@@ -992,7 +1112,11 @@ func _set_palet(i: int) -> void:
 	var cs: Color = profil.get("stripe", p["stripe"])
 	_mat_bodi.set_shader_parameter("paint", cb)
 	_mat_bodi.set_shader_parameter("stripe", cs)
-	_mat_bodi.set_shader_parameter("ev", 1.0 if ev else 0.0)
+	var kabin_ev := 1.0 if (ev or str(profil.get("bodi", "lambo")) == "roadster") else 0.0
+	_mat_bodi.set_shader_parameter("ev", kabin_ev)
+	_mat_kaca_tembus.set_shader_parameter("ev", kabin_ev)
+	_mat_bodi.set_shader_parameter("interior", profil.get("interior", Color(0.03, 0.03, 0.035)))
+	_mat_bodi.set_shader_parameter("aksen", profil.get("aksen", Color(0.8, 0.05, 0.05)))
 	_mat_bodi.set_shader_parameter("paint2", profil.get("paint2", cb))
 	_mat_bodi.set_shader_parameter("iri", float(profil.get("iri", 0.0)))
 	_mat_body.albedo_color = cb

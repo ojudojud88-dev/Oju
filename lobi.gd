@@ -26,6 +26,9 @@ const TEMA := {
 	"giallo": Color(1.0, 0.72, 0.10),
 	"rosso": Color(1.0, 0.15, 0.22),
 	"nero": Color(0.62, 0.32, 1.0),
+	"gt_biru": Color(0.20, 0.50, 1.0),
+	"gt_putih": Color(1.0, 0.50, 0.10),
+	"merah_c": Color(1.0, 0.15, 0.22),
 	"viola": Color(0.70, 0.30, 1.0),
 	"verde": Color(0.30, 0.95, 0.60),
 	"volt": Color(0.20, 0.78, 1.0),
@@ -48,6 +51,14 @@ var _lbl_axis: Array = []
 var _ui_lobi: Control
 var _ui_garasi: Control
 var _mode_garasi := false
+var _view := "luar"
+var _strip: Control
+var _fov_t := 36.0
+var _thumbs := {}
+var _strip_btn := {}
+var _strip_tex := {}
+var _promo_tex := {}
+var _promo_ikon := {}
 var _kartu_pemain: Control
 const CAM_LOBI := [Vector3(6.6, 1.5, 10.4), Vector3(-2.0, 0.8, 0.0)]
 const CAM_GARASI := [Vector3(5.2, 1.3, 8.6), Vector3(-1.9, 0.7, 0.0)]
@@ -78,6 +89,7 @@ func _ready() -> void:
 	_buat_ui()
 	_pajang(Gm.terpilih)
 	_segarkan()
+	_buat_semua_thumb()
 	if Net.aktif:
 		_buka_online()
 		_tampil_ruang(true)
@@ -180,7 +192,7 @@ func _buat_panggung() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-42, -30, 0)
-	sun.light_energy = 1.5
+	sun.light_energy = 1.35
 	sun.light_color = Color(0.8, 0.82, 1.0)
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.0
@@ -196,7 +208,7 @@ func _buat_panggung() -> void:
 	sp.rotation_degrees = Vector3(-90, 0, 0)
 	sp.spot_range = 12.0
 	sp.spot_angle = 38.0
-	sp.light_energy = 3.0
+	sp.light_energy = 1.2
 	sp.light_color = Color(1.0, 0.95, 0.9)
 	_vp.add_child(sp)
 	_spot = sp
@@ -397,6 +409,7 @@ func _pajang(id: String) -> void:
 	c.profil = Gm.profil(id).duplicate()
 	c.hantu = true
 	c.suara = false
+	c.interior_cahaya = true
 	_putar.add_child(c)
 	_mobil_pajang = c
 
@@ -578,6 +591,16 @@ func _buat_ui_lobi() -> void:
 		harga.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		kb.add_child(harga)
 		_pasang_ikon(kb, id)
+		_promo_ikon[id] = kb.get_child(kb.get_child_count() - 1)
+		var tr := TextureRect.new()
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.position = Vector2(176, 12)
+		tr.size = Vector2(150, 76)
+		tr.visible = false
+		kb.add_child(tr)
+		_promo_tex[id] = tr
 
 	# bilah navigasi bawah
 	var nav := PanelContainer.new()
@@ -722,18 +745,48 @@ func _buat_ui_garasi() -> void:
 	_lbl_fitur.position = Vector2(30, 676)
 	_ui_garasi.add_child(_lbl_fitur)
 
+	# tombol sudut pandang
+	var vb := HBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	vb.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	vb.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	vb.offset_left = -560
+	vb.offset_right = -24
+	vb.offset_top = 98
+	_ui_garasi.add_child(vb)
+	for nama in ["luar", "depan", "belakang", "dalam"]:
+		var bt := _tombol_datar(nama.to_upper(), Color(0.7, 0.8, 1.0), 19, Vector2(124, 46))
+		bt.pressed.connect(_atur_view.bind(nama))
+		vb.add_child(bt)
+
+	# galeri thumbnail 3D semua mobil
+	var strip := HBoxContainer.new()
+	_strip = strip
+	strip.add_theme_constant_override("separation", 6)
+	strip.position = Vector2(452, 512)
+	_ui_garasi.add_child(strip)
+	for id in Gm.URUTAN:
+		var sb := Button.new()
+		sb.custom_minimum_size = Vector2(80, 54)
+		sb.pressed.connect(_pilih_pajang.bind(id))
+		sb.focus_mode = Control.FOCUS_NONE
+		strip.add_child(sb)
+		var tx := TextureRect.new()
+		tx.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tx.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tx.set_anchors_preset(Control.PRESET_FULL_RECT)
+		sb.add_child(tx)
+		_strip_btn[id] = sb
+		_strip_tex[id] = tx
+
 	# panah ganti mobil
 	var kiri := _tombol_datar("<", Color(0.9, 0.9, 1.0), 40, Vector2(76, 76))
-	kiri.position = Vector2(470, 560)
+	kiri.position = Vector2(452, 580)
 	kiri.pressed.connect(_geser.bind(-1))
 	_ui_garasi.add_child(kiri)
 	var kanan := _tombol_datar(">", Color(0.9, 0.9, 1.0), 40, Vector2(76, 76))
-	kanan.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	kanan.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	kanan.offset_left = -430
-	kanan.offset_right = -354
-	kanan.offset_top = 560
-	kanan.offset_bottom = 636
+	kanan.position = Vector2(540, 580)
 	kanan.pressed.connect(_geser.bind(1))
 	_ui_garasi.add_child(kanan)
 
@@ -817,6 +870,92 @@ func _gambar_radar() -> void:
 			_lbl_axis[k].position = pos[k]
 
 
+func _atur_view(nama: String) -> void:
+	_view = nama
+	_terapkan_view()
+
+
+func _terapkan_view() -> void:
+	if not _mode_garasi:
+		return
+	var t: Array = CAM_GARASI
+	var fov := 36.0
+	match _view:
+		"depan":
+			t = [Vector3(4.6, 1.3, -9.0), Vector3(1.3, 0.65, 0.0)]
+		"belakang":
+			t = [Vector3(-4.6, 1.35, 9.0), Vector3(-1.3, 0.7, 0.0)]
+		"dalam":
+			t = [Vector3(-0.36, 1.0, 0.45), Vector3(-0.1, 0.78, -0.9)]
+			fov = 76.0
+	_cam_tpos = t[0]
+	_cam_tlihat = t[1]
+	_fov_t = fov
+	var tampil := _view != "dalam"
+	for n in [_radar, _lbl_info, _lbl_fitur, _strip]:
+		if n:
+			n.visible = tampil
+
+
+func _buat_semua_thumb() -> void:
+	for id in Gm.URUTAN:
+		await _buat_thumb(id)
+
+
+func _buat_thumb(id: String) -> void:
+	var sv := SubViewport.new()
+	sv.size = Vector2i(320, 160)
+	sv.own_world_3d = true
+	sv.transparent_bg = true
+	sv.msaa_3d = Viewport.MSAA_2X
+	sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(sv)
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	var sky := Sky.new()
+	var pm := ProceduralSkyMaterial.new()
+	pm.sky_top_color = Color(0.25, 0.28, 0.45)
+	pm.sky_horizon_color = Color(0.75, 0.6, 0.75)
+	pm.ground_horizon_color = Color(0.4, 0.3, 0.4)
+	pm.ground_bottom_color = Color(0.1, 0.08, 0.12)
+	sky.sky_material = pm
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.9
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	var we := WorldEnvironment.new()
+	we.environment = env
+	sv.add_child(we)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-40, 150, 0)
+	sun.light_energy = 1.2
+	sv.add_child(sun)
+	var c = CarScript.new()
+	c.profil = Gm.profil(id).duplicate()
+	c.hantu = true
+	c.suara = false
+	sv.add_child(c)
+	var cam := Camera3D.new()
+	cam.fov = 30.0
+	sv.add_child(cam)
+	cam.look_at_from_position(Vector3(2.7, 1.0, -4.2), Vector3(0, 0.5, 0), Vector3.UP)
+	cam.current = true
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := sv.get_texture().get_image()
+	var tex := ImageTexture.create_from_image(img)
+	_thumbs[id] = tex
+	sv.queue_free()
+	if _strip_tex.has(id):
+		_strip_tex[id].texture = tex
+	if _promo_tex.has(id):
+		_promo_tex[id].texture = tex
+		_promo_tex[id].visible = true
+		if _promo_ikon.has(id):
+			_promo_ikon[id].visible = false
+
+
 func _geser(arah: int) -> void:
 	var i := Gm.URUTAN.find(_id_pajang)
 	i = (i + arah + Gm.URUTAN.size()) % Gm.URUTAN.size()
@@ -830,6 +969,7 @@ func _buka_garasi(id: String = "") -> void:
 
 
 func _tutup_garasi() -> void:
+	_view = "luar"
 	if _id_pajang != Gm.terpilih:
 		_pajang(Gm.terpilih)
 	_lbl_pesan.text = ""
@@ -847,8 +987,11 @@ func _atur_mode(garasi: bool) -> void:
 	var t: Array = CAM_GARASI if garasi else CAM_LOBI
 	_cam_tpos = t[0]
 	_cam_tlihat = t[1]
+	_fov_t = 36.0
 	if _env:
 		_env.fog_enabled = not garasi
+	if garasi:
+		_terapkan_view()
 	_segarkan()
 
 
@@ -942,6 +1085,19 @@ func _segarkan() -> void:
 	_lbl_fitur.text = "BISA TERBANG" if p2["terbang"] else ("Mobil listrik" if p2["ev"] else "Mesin V12")
 	if _radar:
 		_radar.queue_redraw()
+	for id in _strip_btn:
+		var sb: Button = _strip_btn[id]
+		var pilih: bool = (id == _id_pajang)
+		var warna: Color = TEMA.get(id, Color(1, 1, 1)) if pilih else Color(0.5, 0.55, 0.7)
+		var st := _kartu(warna, 0.85)
+		st.set_border_width_all(3 if pilih else 1)
+		st.content_margin_left = 2
+		st.content_margin_right = 2
+		st.content_margin_top = 2
+		st.content_margin_bottom = 2
+		for k in ["normal", "hover", "pressed", "focus"]:
+			sb.add_theme_stylebox_override(k, st)
+		_strip_tex[id].modulate = Color(1, 1, 1) if Gm.punya(id) else Color(0.55, 0.55, 0.6)
 	if Gm.punya(_id_pajang):
 		if Gm.terpilih == _id_pajang:
 			_btn_aksi.text = "DIPAKAI"
@@ -1165,6 +1321,7 @@ func _terapkan_tema(delta: float) -> void:
 	if _cam:
 		_cam_pos = _cam_pos.lerp(_cam_tpos, 1.0 - exp(-3.5 * delta))
 		_cam_lihat = _cam_lihat.lerp(_cam_tlihat, 1.0 - exp(-3.5 * delta))
+		_cam.fov = lerpf(_cam.fov, _fov_t, 1.0 - exp(-4.0 * delta))
 		_cam.look_at_from_position(_cam_pos, _cam_lihat, Vector3.UP)
 
 
@@ -1172,7 +1329,10 @@ func _process(delta: float) -> void:
 	_t += delta
 	_terapkan_tema(delta)
 	if _putar:
-		_putar.rotation.y += delta * 0.45
+		if _mode_garasi and _view != "luar":
+			_putar.rotation.y = lerp_angle(_putar.rotation.y, 0.0, 1.0 - exp(-5.0 * delta))
+		else:
+			_putar.rotation.y += delta * 0.45
 	if _mobil_pajang != null and is_instance_valid(_mobil_pajang):
 		var terbang: bool = _mobil_pajang.terbang_mampu
 		var naik := 0.0

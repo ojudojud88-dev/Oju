@@ -45,3 +45,8 @@ Editor -> Manage Export Templates (unduh), lalu Project -> Export -> Add -> Andr
 === FISIKA: TIDAK MELAYANG (22 Okt) ===
 - Sudut setir dibatasi percepatan samping (LAT_MAKS di car.gd), pusat massa diturunkan, anti-guling, gravitasi 1.6x (GRAVITASI).
 - Lompatan di sirkuit diperkecil (tinggi 1.9 m -> 0.6 m). Bila mau lebih seru, naikkan `tinggi` di main.gd (_lompatan).
+
+=== GALERI, INTERIOR, MOBIL BARU (23 Okt) ===
+- Garasi: tombol LUAR / DEPAN / BELAKANG / DALAM (kamera kokpit), strip thumbnail 3D untuk 9 mobil.
+- Kaca bodi kini tembus pandang: interior (kursi, dasbor, setir, layar, konsol) terlihat dari luar dan dalam.
+- Mobil baru: Stallion GT Biru (7.000), Heritage GT Putih (11.000), Crimson Roadster (13.000).
